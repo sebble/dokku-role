@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+[[ $DOKKU_TRACE ]] && set -x
+source "$PLUGIN_AVAILABLE_PATH/role/functions"
+
+role_check $2 $3 && exit 0 || exit 1
+
+exit 0;

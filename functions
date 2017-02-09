@@ -1,0 +1,140 @@
+#!/usr/bin/env bash
+[[ $DOKKU_TRACE ]] && set -x
+source "$PLUGIN_CORE_AVAILABLE_PATH/common/functions"
+source "$PLUGIN_CORE_AVAILABLE_PATH/config/functions"
+
+## set default roles
+egrep -q '^export ROLE_PUBLIC=' $DOKKU_ROOT/ENV || {
+  echo "export ROLE_PUBLIC='version,help;<All users>'" >> $DOKKU_ROOT/ENV
+}
+egrep -q '^export ROLE_ADMIN=' $DOKKU_ROOT/ENV || {
+  echo "export ROLE_ADMIN='<All commands>;default'" >> $DOKKU_ROOT/ENV
+}
+
+role_ls() {
+  test -n "$1" && role_ls_one $1 || {
+    for role in $(role_get_roles|sort); do
+      role_ls_one $role
+    done
+  }
+}
+
+role_get_roles() {
+  egrep -o '^export ROLE_[^=]+' $DOKKU_ROOT/ENV|cut -c13-
+}
+
+role_ls_one() {
+  UPPER=$(echo $1|tr -dc '[:alnum:]'|tr '[:lower:]' '[:upper:]')
+  LOWER=$(echo $UPPER|tr '[:upper:]' '[:lower:]')
+
+  CMDS="$(role_get_cmds $LOWER)"
+  MBRS="$(role_get_members $LOWER)"
+
+  echo "$LOWER:"
+  echo "    ${CMDS:-<This role has no commands>}"
+  echo "    ${MBRS:-<This role has no members>}"
+  echo
+}
+
+role_add() {
+  UPPER=$(echo $1|tr -dc '[:alnum:]'|tr '[:lower:]' '[:upper:]')
+  LOWER=$(echo $UPPER|tr '[:upper:]' '[:lower:]')
+
+  CMDS=$(role_clean "$(role_get_cmds $1),$2")
+  MBRS=$(role_get_members $1)
+  config_set --global "ROLE_${UPPER}=$CMDS;$MBRS"
+}
+
+role_destroy() {
+  UPPER=$(echo $1|tr -dc '[:alnum:]'|tr '[:lower:]' '[:upper:]')
+  config_unset --global "ROLE_$UPPER"
+}
+
+role_create() {
+  UPPER=$(echo $1|tr -dc '[:alnum:]'|tr '[:lower:]' '[:upper:]')
+  config_set --global "ROLE_${UPPER}=;"
+}
+
+role_remove() {
+  UPPER=$(echo $1|tr -dc '[:alnum:]'|tr '[:lower:]' '[:upper:]')
+  LOWER=$(echo $UPPER|tr '[:upper:]' '[:lower:]')
+
+  CMDS=$(role_get_cmds $1|sed -r "s/(^|,)$2(,|$)/,/g"|role_clean)
+  MBRS=$(role_get_members $1)
+  config_set --global "ROLE_${UPPER}=$CMDS;$MBRS"
+}
+
+role_promote() {
+  UPPER=$(echo $1|tr -dc '[:alnum:]'|tr '[:lower:]' '[:upper:]')
+  LOWER=$(echo $UPPER|tr '[:upper:]' '[:lower:]')
+
+  CMDS=$(role_get_cmds $1)
+  MBRS=$(role_clean "$(role_get_members $1),$2")
+  config_set --global "ROLE_${UPPER}=$CMDS;$MBRS"
+}
+
+role_demote() {
+  UPPER=$(echo $1|tr -dc '[:alnum:]'|tr '[:lower:]' '[:upper:]')
+  LOWER=$(echo $UPPER|tr '[:upper:]' '[:lower:]')
+
+  CMDS=$(role_get_cmds $1)
+  MBRS=$(role_get_members $1|sed -r "s/(^|,)$2(,|$)/,/g"|role_clean)
+  config_set --global "ROLE_${UPPER}=$CMDS;$MBRS"
+}
+
+role_user_get_roles() {
+  echo PUBLIC
+  egrep "^export ROLE_[^=]+=.*[,;]$1(,|$)[^;]+$" $DOKKU_ROOT/ENV|cut -d= -f1|cut -c13-
+}
+
+role_user_get_cmds() {
+  (for role in $(role_user_get_roles $1); do role_get_cmds $role; done)|role_clean
+}
+
+role_me() {
+  echo -en "Roles:\n    "
+  role_user_get_roles $SSH_NAME|tr '[:upper:]' '[:lower:]'|tr '\n' ,
+  echo
+  echo -en "Commands:\n    "
+  role_user_get_cmds $SSH_NAME|tr '[:upper:]' '[:lower:]'|tr '\n' ,
+  echo
+}
+
+role_check() {
+  role_is_admin $1 && exit 0
+  role_has_cmd $1 $2 && exit 0
+  exit 1
+}
+
+role_is_admin() {
+  role_user_get_roles $1|egrep -q "(^|,)ADMIN(,|$)"
+}
+
+role_has_cmd() {
+  PART=$(echo $2|cut -d: -f1)
+  role_user_get_cmds $1|egrep -q "(^|,)$2(,|$)" || \
+  role_user_get_cmds $1|egrep -q "(^|,)$PART(,|$)"
+}
+
+role_get() {
+  UPPER=$(echo $1|tr -dc '[:alnum:]'|tr '[:lower:]' '[:upper:]')
+  LOWER=$(echo $UPPER|tr '[:upper:]' '[:lower:]')
+
+  config_get --global "ROLE_${UPPER}"
+}
+
+role_get_cmds() {
+  role_get $1|cut -d\; -f1
+}
+
+role_get_members() {
+  role_get $1|cut -d\; -f2
+}
+
+
+role_clean() {
+  test -n "$1" \
+  && echo "$1"|tr , '\n'|sort -u|grep -v '^$'|tr '\n' , \
+  || tr , '\n'|sort -u|grep -v '^$'|tr '\n' ,
+}
+

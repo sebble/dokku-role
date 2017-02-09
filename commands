@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+[[ " help role " == *" $1 "* ]] || [[ "$1" == "role:"* ]] || exit "$DOKKU_NOT_IMPLEMENTED_EXIT"
+[[ $DOKKU_TRACE ]] && set -x
+source "$PLUGIN_CORE_AVAILABLE_PATH/common/functions"
+source "$PLUGIN_CORE_AVAILABLE_PATH/config/functions"
+source "$PLUGIN_AVAILABLE_PATH/role/functions"
+
+case "${1:-}" in
+  role:me)
+      role_me
+    ;;
+  role:ls)
+      role_ls $2 # optional role
+    ;;
+  role:add)
+      role_add $2 $3 # role cmd,cmd,cmd
+    ;;
+  role:remove)
+      role_remove $2 $3 # role cmd,cmd,cmd
+    ;;
+  role:promote)
+      role_promote $2 $3 # role user,user,user
+    ;;
+  role:demote)
+      role_demote $2 $3 # role user,user,user
+    ;;
+  role:create)
+      role_create $2 # role
+    ;;
+  role:destroy)
+      role_destroy $2 # role
+    ;;
+  help)
+    echo "    role, Manage command roles and memberships"
+    ;;
+  role | role:help)
+    usage() {
+      cat<<commands
+    role, Manage command roles and memberships
+    role:me, Show my roles and allowed commands
+    role:ls (<role>|--all), List commands and members for a role (or all roles)
+    role:add <role> <cmd>, Add a command to this role
+    role:remove <role> <cmd>, Remove a command from this role
+    role:promote <role> <user>, Give a user membership of a role
+    role:demote <role> <user>, Revoke a user's membership of a role
+    role:create <role>, Create a new blank role
+    role:destroy <role>, Completely remove a role
+    role:help, This help
+commands
+    }
+    cat<<usage
+Usage: dokku role[:COMMAND]"
+
+Manage command roles and memberships
+
+Additional commands:
+usage
+    usage|column -c2 -t -s,
+    echo  ""
+    ;;
+  *)
+    exit "$DOKKU_NOT_IMPLEMENTED_EXIT"
+    ;;
+esac
